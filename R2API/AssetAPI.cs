@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEngine;
 using MonoMod.Cil;
 
@@ -25,6 +26,41 @@ namespace R2API {
         /// </summary>
         public static List<GameObject> BodyCatalog { get; private set; } = new List<GameObject>();
 
+        public static void AddToBodyCatalog(GameObject bodyPrefab, Texture2D portraitIcon = null) {
+            // TODO: maybe redo this
+
+            BodyCatalog.Add(bodyPrefab);
+            if (!doneLoading) {
+                return;
+            }
+
+            var field_bodyPrefabs = typeof(RoR2.BodyCatalog)
+                .GetFieldCached("bodyPrefabs", BindingFlags.Static | BindingFlags.NonPublic);
+            var field_nameToIndexMap = typeof(RoR2.BodyCatalog)
+                .GetFieldCached("nameToIndexMap", BindingFlags.Static | BindingFlags.NonPublic);
+            var field_bodyPrefabBodyComponents = typeof(RoR2.BodyCatalog)
+                .GetFieldCached("bodyPrefabBodyComponents", BindingFlags.Static | BindingFlags.NonPublic);
+
+            var bodyPrefabs = (GameObject[])field_bodyPrefabs.GetValue(null);
+            var nameToIndexMap = (Dictionary<string, int>)field_nameToIndexMap.GetValue(null);
+            var bodyPrefabBodyComponents = (RoR2.CharacterBody[])field_bodyPrefabBodyComponents.GetValue(null);
+
+            var index = bodyPrefabs.Length;
+            Array.Resize(ref bodyPrefabs, index +1);
+            bodyPrefabs[index] = bodyPrefab;
+            nameToIndexMap.Add(bodyPrefab.name, index);
+            nameToIndexMap.Add(bodyPrefab.name + "(Clone)", index);
+            Array.Resize(ref bodyPrefabBodyComponents, index +1);
+            bodyPrefabBodyComponents[index] = bodyPrefab.GetComponent<RoR2.CharacterBody>();
+
+            if (portraitIcon != null)
+                bodyPrefabBodyComponents[index].portraitIcon = portraitIcon;
+
+            field_bodyPrefabs.SetValue(null, bodyPrefabs);
+            field_nameToIndexMap.SetValue(null, nameToIndexMap);
+            field_bodyPrefabBodyComponents.SetValue(null, bodyPrefabBodyComponents);
+        }
+
         internal static void InitHooks() {
             AssetLoaderReady?.Invoke(null, null);
 
@@ -47,7 +83,7 @@ namespace R2API {
                 c.Goto(0);
                 //Stores the new GameObject[] in the static field BodyCatalog.bodyPrefabs
                 //This array contains both vanilla and modded Body prefabs.
-                //TODO: find a way to also add 2d sprites, as are done on line 113 and have a very hard-coded path 
+                //TODO: find a way to also add 2d sprites, as are done on line 113 and have a very hard-coded path
                 c.EmitDelegate<Func<GameObject[]>>(BuildBodyCatalog);
             };
             doneLoading = true;
